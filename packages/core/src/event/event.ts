@@ -1,4 +1,6 @@
+import { Meta2d } from '../core';
 import { IValue, Pen } from '../pen';
+import { Network } from '../store';
 
 export type EventValue = string | IValue | undefined | null;
 // 事件行为
@@ -11,7 +13,9 @@ export type EventName =
   | 'mousedown'
   | 'mouseup'
   | 'dblclick'
-  | 'valueUpdate';
+  | 'valueUpdate'
+  | 'message';
+
 export interface Event {
   name: EventName;
   action: EventAction; // 事件动作
@@ -19,7 +23,15 @@ export interface Event {
   value?: EventValue; // 不同 action 下，该值含义不同，例如：动画相关的，即为 节点 tag; Function 类型即为 字符串函数
   params?: string;
   extend?: string;
-  fn?: (pen: Pen, params: string) => void;
+  fn?: (
+    pen: Pen,
+    params: string,
+    context?: { meta2d: Meta2d; eventName: string }
+  ) => void;
+  targetType?: string;
+  network?: Network;
+  actions?: Event[];
+  message?: string; //消息名称
 }
 
 export enum EventAction {
@@ -36,6 +48,9 @@ export enum EventAction {
   StopVideo,
   SendPropData,
   SendVarData,
+  Navigator,
+  Dialog,
+  SendData, //数据源选择
 }
 
 export interface Where {
@@ -43,7 +58,12 @@ export interface Where {
   key?: string;
   comparison?: Comparison;
   value?: unknown;
-  fn?: (pen: Pen) => boolean;
+  fn?: (
+    pen: Pen,
+    context?: {
+      meta2d: Meta2d;
+    }
+  ) => boolean;
   fnJs?: string;
 }
 
@@ -68,3 +88,44 @@ export type Comparison =
    */
   | '[]'
   | '![]'; // 非属于，与上一个相反
+
+export interface TriggerCondition {
+  type?: string; //'fn'|''
+  operator?: Comparison;
+  valueType?: string; //'prop'|''
+  value?: string;
+  target?: string;
+  label?: string;
+  fnJs?: string;
+  fn?: (
+    pen: Pen,
+    context?: {
+      meta2d: Meta2d;
+    }
+  ) => boolean;
+}
+
+export interface Trigger {
+  name?: string;
+  conditionType?: string; //'and'/'or'
+  conditions?: TriggerCondition[];
+  actions?: Event[];
+}
+
+export interface Bind {
+  case?: string;
+  id?: string;
+  label?: string;
+}
+
+export interface RealTime {
+  label?: string;
+  key?: string;
+  type?: string;
+  keywords?: true;
+  triggers?: Trigger[];
+  bind?: Bind;
+  value?: string;
+  enableMock?: boolean;
+  mock?: any;
+}

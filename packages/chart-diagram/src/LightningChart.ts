@@ -23,6 +23,7 @@ export function lightningCharts(pen: Pen): Path2D {
     pen.onResize = resize;
     pen.onRotate = move;
     pen.onValue = value;
+    pen.onRenderPenRaw = onRenderPenRaw;
   }
 
   const path = new Path2D();
@@ -60,7 +61,7 @@ export function lightningCharts(pen: Pen): Path2D {
     }, 400);
   }
 
-  path.rect(worldRect.x, worldRect.y, worldRect.width, worldRect.height);
+  // path.rect(worldRect.x, worldRect.y, worldRect.width, worldRect.height);
 
   if (pen.calculative.patchFlags && pen.calculative.singleton.div) {
     setElemPosition(pen, pen.calculative.singleton.div);
@@ -338,4 +339,13 @@ function value(pen: Pen) {
   }
   setLightningCharts(pen);
   setElemPosition(pen, pen.calculative.singleton.div);
+}
+
+function onRenderPenRaw(pen: Pen) {
+  if (!pen.calculative?.singleton) {
+    return;
+  }
+  const img = new Image();
+  img.src = pen.calculative.singleton.div.children[0].toDataURL();
+  pen.calculative.img = img;
 }

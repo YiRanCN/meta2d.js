@@ -1,6 +1,6 @@
 import { Point } from '../point';
 import { Rect } from '../rect';
-import { Event } from '../event';
+import { Event, RealTime } from '../event';
 import { Canvas } from '../canvas';
 
 export enum PenType {
@@ -56,7 +56,7 @@ export const needCalcTextRectProps = [
   'keepDecimal',
 ];
 
-export const needSetPenProps = ['x', 'y', 'width', 'height'];
+export const needSetPenProps = ['x', 'y', 'width', 'height', 'flipX', 'flipY'];
 
 export const needPatchFlagsPenRectProps = [
   'paddingTop',
@@ -316,7 +316,16 @@ export interface Pen extends Rect {
   scrolling?: string; //iframe scrolling属性
   animations?: any[]; //动画数组
   currentAnimation?: number; //当前动画索引
+  realTimes?: RealTime[];
+  crossOrigin?: string;
+  imageRadius?: number; //图片圆角
+  textFlip?: boolean; //文字是否镜像
+  textRotate?: boolean; //文字是否旋转
   // calculative 对象中的值是为了动画存在，表明了渐变过程中，画布上绘制的当前值
+  textAutoAdjust?: boolean; //text图元宽高根据文本自动调整
+  dbInput?: boolean; //锁定状态下，双击能否输入
+  operationalRect?: Rect; //iframe可操作区域 x,y,width,height 均取值0-1
+  blur?: number;
   calculative?: {
     x?: number;
     y?: number;
@@ -498,6 +507,7 @@ export interface Pen extends Rect {
     gradientAnimatePath?: Path2D;
     cssDisplay?: string; //css display
     animations?: any[];
+    imageRadius?: number;
   };
 
   // 前一个动画帧状态数据
@@ -524,6 +534,9 @@ export interface Pen extends Rect {
   onStartVideo?: (pen: Pen) => void;
   onPauseVideo?: (pen: Pen) => void;
   onStopVideo?: (pen: Pen) => void;
+  onRenderPenRaw?: (pen: Pen) => void;
+  onKeyDown?: (pen: Pen, key: string) => void;
+  onWheel?: (pen: Pen, e: WheelEvent) => void;
 }
 
 // 属性绑定变量
@@ -563,18 +576,12 @@ export const isDomShapes = [
   'echarts',
   'highcharts',
   'lightningCharts',
-  'leInput',
-  'leSelect',
-  'leMenu',
-  'leHeadMenu',
-  'leSliderVerify',
-  'leDropDown',
 ];
 
 // 格式刷同步的属性
 export const formatAttrs: Set<string> = new Set([
   'borderRadius',
-  'rotate',
+  // 'rotate',
   'paddingLeft',
   'paddingRight',
   'paddingTop',
@@ -667,4 +674,9 @@ export function clearLifeCycle(pen: Pen) {
   pen.onInput = undefined;
   pen.onChangeId = undefined;
   pen.onBinds = undefined;
+  pen.onStartVideo = undefined;
+  pen.onPauseVideo = undefined;
+  pen.onStopVideo = undefined;
+  pen.onRenderPenRaw = undefined;
+  pen.onKeyDown = undefined;
 }

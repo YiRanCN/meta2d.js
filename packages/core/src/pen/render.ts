@@ -178,15 +178,44 @@ function getBkGradient(ctx: CanvasRenderingContext2D, pen: Pen) {
     { x: ex, y: y + height / 2 },
     { x: x, y: y + height / 2 },
   ];
-  let r = width / 2;
-  if (width > height) {
-    r = height / 2;
-  }
   const { angle, colors } = formatGradient(pen.calculative.gradientColors);
+  let r = getGradientR(angle, width, height);
   points.forEach((point) => {
     rotatePoint(point, angle, center);
   });
   return getLinearGradient(ctx, points, colors, r);
+}
+
+function getGradientR(angle: number, width: number, height: number) {
+  const dividAngle = (Math.atan(height / width) / Math.PI) * 180;
+  let calculateAngle = (angle - 90) % 360;
+  let r = 0;
+  if (
+    (calculateAngle > dividAngle && calculateAngle < 180 - dividAngle) ||
+    (calculateAngle > 180 + dividAngle && calculateAngle < 360 - dividAngle) ||
+    calculateAngle < 0
+  ) {
+    //根据高计算
+    if (calculateAngle > 270) {
+      calculateAngle = 360 - calculateAngle;
+    } else if (calculateAngle > 180) {
+      calculateAngle = calculateAngle - 180;
+    } else if (calculateAngle > 90) {
+      calculateAngle = 180 - calculateAngle;
+    }
+    r = Math.abs(height / Math.sin((calculateAngle / 180) * Math.PI) / 2);
+  } else {
+    //根据宽计算
+    if (calculateAngle > 270) {
+      calculateAngle = 360 - calculateAngle;
+    } else if (calculateAngle > 180) {
+      calculateAngle = calculateAngle - 180;
+    } else if (calculateAngle > 90) {
+      calculateAngle = 180 - calculateAngle;
+    }
+    r = Math.abs(width / Math.cos((calculateAngle / 180) * Math.PI) / 2);
+  }
+  return r;
 }
 
 function formatGradient(color: string) {
@@ -265,11 +294,9 @@ function getLineGradient(ctx: CanvasRenderingContext2D, pen: Pen) {
     { x: ex, y: y + height / 2 },
     { x: x, y: y + height / 2 },
   ];
-  let r = width / 2;
-  if (width > height) {
-    r = height / 2;
-  }
+
   const { angle, colors } = formatGradient(pen.calculative.lineGradientColors);
+  let r = getGradientR(angle, width, height);
 
   points.forEach((point) => {
     rotatePoint(point, angle, center);
@@ -423,6 +450,12 @@ function getSmoothAdjacent(smoothLenth: number, p1: Point, p2: Point) {
   let nexLength = Math.sqrt(
     (p2.x - p1.x) * (p2.x - p1.x) + (p2.y - p1.y) * (p2.y - p1.y)
   );
+  if (nexLength === 0) {
+    return {
+      x: p1.x,
+      y: p1.y,
+    };
+  }
   if (smoothLenth < nexLength) {
     return {
       x: p1.x + ((p2.x - p1.x) * smoothLenth) / nexLength,
@@ -762,7 +795,42 @@ export function drawImage(
     ctx.rotate((iconRotate * Math.PI) / 180);
     ctx.translate(-centerX, -centerY);
   }
-  ctx.drawImage(img, x, y, width, height);
+  if (pen.imageRadius) {
+    ctx.save();
+    let wr = pen.calculative.imageRadius || 0,
+      hr = wr;
+    const {
+      x: _x,
+      y: _y,
+      width: w,
+      height: h,
+      ex,
+      ey,
+    } = pen.calculative.worldRect;
+    if (wr < 1) {
+      wr = w * wr;
+      hr = h * hr;
+    }
+    let r = wr < hr ? wr : hr;
+    if (w < 2 * r) {
+      r = w / 2;
+    }
+    if (h < 2 * r) {
+      r = h / 2;
+    }
+    ctx.beginPath();
+
+    ctx.moveTo(_x + r, _y);
+    ctx.arcTo(ex, _y, ex, ey, r);
+    ctx.arcTo(ex, ey, _x, ey, r);
+    ctx.arcTo(_x, ey, _x, _y, r);
+    ctx.arcTo(_x, _y, ex, _y, r);
+    ctx.clip();
+    ctx.drawImage(img, x, y, width, height);
+    ctx.restore();
+  } else {
+    ctx.drawImage(img, x, y, width, height);
+  }
 }
 
 /**
@@ -1041,16 +1109,20 @@ export function ctxFlip(
 
 export function ctxRotate(
   ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
-  pen: Pen
+  pen: Pen,
+  noFlip: boolean = false
 ) {
   const { x, y } = pen.calculative.worldRect.center;
   ctx.translate(x, y);
   let rotate = (pen.calculative.rotate * Math.PI) / 180;
   // 目前只有水平和垂直翻转，都需要 * -1
-  if (pen.calculative.flipX) {
-    rotate *= -1;
-  } else if (pen.calculative.flipY) {
-    rotate *= -1;
+  if (!noFlip) {
+    if (pen.calculative.flipX) {
+      rotate *= -1;
+    }
+    if (pen.calculative.flipY) {
+      rotate *= -1;
+    }
   }
   ctx.rotate(rotate);
   ctx.translate(-x, -y);
@@ -1060,7 +1132,12 @@ export function renderPen(ctx: CanvasRenderingContext2D, pen: Pen) {
   ctx.save();
   ctx.translate(0.5, 0.5);
   ctx.beginPath();
-
+  const store = pen.calculative.canvas.store;
+  const textFlip = pen.textFlip || store.options.textFlip;
+  const textRotate = pen.textRotate || store.options.textRotate;
+  if (!textFlip || !textRotate) {
+    ctx.save();
+  }
   ctxFlip(ctx, pen);
 
   if (pen.calculative.rotate && pen.name !== 'line') {
@@ -1071,100 +1148,100 @@ export function renderPen(ctx: CanvasRenderingContext2D, pen: Pen) {
     ctx.lineWidth = pen.calculative.lineWidth;
   }
 
-  const store = pen.calculative.canvas.store;
-
   inspectRect(ctx, store, pen); // 审查 rect
   let fill: any;
   // 该变量控制在 hover active 状态下的节点是否设置填充颜色
-  let setBack = true;
+  // let setBack = true;
   let lineGradientFlag = false;
+  let _stroke = undefined;
   if (pen.calculative.hover) {
-    ctx.strokeStyle = pen.hoverColor || store.options.hoverColor;
+    _stroke = pen.hoverColor || store.options.hoverColor;
     fill = pen.hoverBackground || store.options.hoverBackground;
-    ctx.fillStyle = fill;
-    fill && (setBack = false);
+    //  ctx.fillStyle = fill;
+    //  fill && (setBack = false);
   } else if (pen.calculative.active) {
-    ctx.strokeStyle = pen.activeColor || store.options.activeColor;
+    _stroke = pen.activeColor || store.options.activeColor;
     fill = pen.activeBackground || store.options.activeBackground;
-    ctx.fillStyle = fill;
-    fill && (setBack = false);
+    // ctx.fillStyle = fill;
+    // fill && (setBack = false);
   } else if (pen.calculative.isDock) {
     if (pen.type === PenType.Line) {
-      ctx.strokeStyle = store.options.dockPenColor;
+      _stroke = store.options.dockPenColor;
     } else {
       fill = rgba(store.options.dockPenColor, 0.2);
-      ctx.fillStyle = fill;
-      fill && (setBack = false);
+      //  ctx.fillStyle = fill;
+      //  fill && (setBack = false);
     }
+  }
+  // else {
+  const strokeImg = pen.calculative.strokeImg;
+  if (pen.calculative.strokeImage && strokeImg) {
+    ctx.strokeStyle = _stroke || ctx.createPattern(strokeImg, 'repeat');
+    // fill = true;
   } else {
-    const strokeImg = pen.calculative.strokeImg;
-    if (pen.calculative.strokeImage && strokeImg) {
-      ctx.strokeStyle = ctx.createPattern(strokeImg, 'repeat');
-      fill = true;
-    } else {
-      let stroke: string | CanvasGradient | CanvasPattern;
-      // TODO: 线只有线性渐变
-      if (pen.calculative.strokeType) {
-        if (pen.calculative.lineGradientColors) {
-          if (pen.name === 'line') {
-            lineGradientFlag = true;
-          } else {
-            if (pen.calculative.lineGradient) {
-              stroke = pen.calculative.lineGradient;
-            } else {
-              stroke = getLineGradient(ctx, pen);
-              pen.calculative.lineGradient = stroke;
-            }
-          }
+    let stroke: string | CanvasGradient | CanvasPattern;
+    // TODO: 线只有线性渐变
+    if (pen.calculative.strokeType) {
+      if (pen.calculative.lineGradientColors) {
+        if (pen.name === 'line') {
+          lineGradientFlag = true;
         } else {
-          stroke = strokeLinearGradient(ctx, pen);
+          if (pen.calculative.lineGradient) {
+            stroke = pen.calculative.lineGradient;
+          } else {
+            stroke = getLineGradient(ctx, pen);
+            pen.calculative.lineGradient = stroke;
+          }
         }
       } else {
-        stroke = pen.calculative.color || getGlobalColor(store);
+        stroke = strokeLinearGradient(ctx, pen);
       }
-      ctx.strokeStyle = stroke;
-    }
-  }
-  if (setBack) {
-    const backgroundImg = pen.calculative.backgroundImg;
-    if (pen.calculative.backgroundImage && backgroundImg) {
-      ctx.fillStyle = ctx.createPattern(backgroundImg, 'repeat');
-      fill = true;
     } else {
-      let back: string | CanvasGradient | CanvasPattern;
-      if (pen.calculative.bkType === Gradient.Linear) {
-        if (pen.calculative.gradientColors) {
-          if (pen.name !== 'line') {
-            //连线不考虑渐进背景
-            if (pen.calculative.gradient) {
-              //位置变化/放大缩小操作不会触发重新计算
-              back = pen.calculative.gradient;
-            } else {
-              back = getBkGradient(ctx, pen);
-              pen.calculative.gradient = back;
-            }
-          }
-        } else {
-          back = drawBkLinearGradient(ctx, pen);
-        }
-      } else if (pen.calculative.bkType === Gradient.Radial) {
-        if (pen.calculative.gradientColors) {
-          if (pen.calculative.radialGradient) {
-            back = pen.calculative.radialGradient;
+      stroke = pen.calculative.color || getGlobalColor(store);
+    }
+    ctx.strokeStyle = _stroke || stroke;
+  }
+  // }
+  //if (setBack) {
+  const backgroundImg = pen.calculative.backgroundImg;
+  if (pen.calculative.backgroundImage && backgroundImg) {
+    ctx.fillStyle = fill || ctx.createPattern(backgroundImg, 'repeat');
+    fill = true;
+  } else {
+    let back: string | CanvasGradient | CanvasPattern;
+    if (pen.calculative.bkType === Gradient.Linear) {
+      if (pen.calculative.gradientColors) {
+        if (pen.name !== 'line') {
+          //连线不考虑渐进背景
+          if (pen.calculative.gradient) {
+            //位置变化/放大缩小操作不会触发重新计算
+            back = pen.calculative.gradient;
           } else {
-            back = getBkRadialGradient(ctx, pen);
-            pen.calculative.radialGradient = back;
+            back = getBkGradient(ctx, pen);
+            pen.calculative.gradient = back;
           }
-        } else {
-          back = drawBkRadialGradient(ctx, pen);
         }
       } else {
-        back = pen.calculative.background || store.data.penBackground;
+        back = drawBkLinearGradient(ctx, pen);
       }
-      ctx.fillStyle = back;
-      fill = !!back;
+    } else if (pen.calculative.bkType === Gradient.Radial) {
+      if (pen.calculative.gradientColors) {
+        if (pen.calculative.radialGradient) {
+          back = pen.calculative.radialGradient;
+        } else {
+          back = getBkRadialGradient(ctx, pen);
+          pen.calculative.radialGradient = back;
+        }
+      } else {
+        back = drawBkRadialGradient(ctx, pen);
+      }
+    } else {
+      back = pen.calculative.background || store.data.penBackground;
     }
+    ctx.fillStyle = fill || back;
+    fill = !!back;
   }
+  // }
 
   setLineCap(ctx, pen);
   setLineJoin(ctx, pen);
@@ -1194,6 +1271,18 @@ export function renderPen(ctx: CanvasRenderingContext2D, pen: Pen) {
   }
   if (!(pen.image && pen.calculative.img) && pen.calculative.icon) {
     drawIcon(ctx, pen);
+  }
+
+  if (!textFlip || !textRotate) {
+    ctx.restore();
+  }
+  if (textFlip && !textRotate) {
+    ctxFlip(ctx, pen);
+  }
+  if (!textFlip && textRotate) {
+    if (pen.calculative.rotate && pen.name !== 'line') {
+      ctxRotate(ctx, pen, true);
+    }
   }
 
   drawText(ctx, pen);
@@ -1249,8 +1338,13 @@ export function renderPenRaw(
   // for canvas2svg
   (ctx as any).setAttrs?.(pen);
   // end
-
+  const store = pen.calculative.canvas.store;
+  const textFlip = pen.textFlip || store.options.textFlip;
+  const textRotate = pen.textRotate || store.options.textRotate;
   ctx.beginPath();
+  if (!textFlip || !textRotate) {
+    ctx.save();
+  }
   if (pen.calculative.flipX) {
     if (rect) {
       ctx.translate(
@@ -1287,9 +1381,6 @@ export function renderPenRaw(
   if (pen.calculative.lineWidth > 1) {
     ctx.lineWidth = pen.calculative.lineWidth;
   }
-
-  const store = pen.calculative.canvas.store;
-
   let fill: any;
   if (pen.calculative.hover) {
     ctx.strokeStyle = pen.hoverColor || store.options.hoverColor;
@@ -1360,6 +1451,46 @@ export function renderPenRaw(
     ctx.restore();
   } else if (pen.calculative.icon) {
     drawIcon(ctx, pen);
+  }
+
+  if (!textFlip || !textRotate) {
+    ctx.restore();
+  }
+
+  if (textFlip && !textRotate) {
+    if (pen.calculative.flipX) {
+      if (rect) {
+        ctx.translate(
+          pen.calculative.worldRect.x + pen.calculative.worldRect.ex,
+          0
+        );
+      } else {
+        ctx.translate(
+          pen.calculative.worldRect.x + pen.calculative.worldRect.ex,
+          0
+        );
+      }
+      ctx.scale(-1, 1);
+    }
+    if (pen.calculative.flipY) {
+      if (rect) {
+        ctx.translate(
+          0,
+          pen.calculative.worldRect.y + pen.calculative.worldRect.ey
+        );
+      } else {
+        ctx.translate(
+          0,
+          pen.calculative.worldRect.y + pen.calculative.worldRect.ey
+        );
+      }
+      ctx.scale(1, -1);
+    }
+  }
+  if (!textFlip && textRotate) {
+    if (pen.calculative.rotate && pen.name !== 'line') {
+      ctxRotate(ctx, pen, true);
+    }
   }
 
   drawText(ctx, pen);
@@ -1497,7 +1628,9 @@ export function ctxDrawLinePath(
             if (!pen.calculative.gradientAnimatePath) {
               pen.calculative.gradientAnimatePath = getGradientAnimatePath(pen);
             }
-            ctx.stroke(pen.calculative.gradientAnimatePath);
+            if (pen.calculative.gradientAnimatePath instanceof Path2D) {
+              ctx.stroke(pen.calculative.gradientAnimatePath);
+            }
           } else {
             ctx.stroke(path);
           }
@@ -1607,7 +1740,9 @@ export function renderAnchor(
     return;
   }
 
-  const active = pen.calculative.activeAnchor === pt;
+  const active =
+    pen.calculative.canvas.store.activeAnchor ===
+      pen.calculative.activeAnchor && pen.calculative.activeAnchor === pt;
   let r = 3;
   if (pen.calculative.lineWidth > 3) {
     r = pen.calculative.lineWidth;
@@ -1682,7 +1817,8 @@ export function calcWorldRects(pen: Pen) {
     y: pen.y,
   };
 
-  if (!pen.parentId) {
+  if (!pen.parentId || (pen.parentId && !store.pens[pen.parentId])) {
+    pen.parentId = undefined;
     rect.width = pen.width;
     rect.height = pen.height;
     rect.rotate = pen.rotate;
@@ -1753,7 +1889,18 @@ export function calcWorldAnchors(pen: Pen) {
   const store: Meta2dStore = pen.calculative.canvas.store;
   let anchors: Point[] = [];
   if (pen.anchors) {
-    pen.anchors.forEach((anchor) => {
+    let _anchors = deepClone(pen.anchors);
+    if (pen.flipX) {
+      _anchors.forEach((anchor) => {
+        anchor.x = 0.5 - (anchor.x - 0.5);
+      });
+    }
+    if (pen.flipY) {
+      _anchors.forEach((anchor) => {
+        anchor.y = 0.5 - (anchor.y - 0.5);
+      });
+    }
+    _anchors.forEach((anchor) => {
       anchors.push(calcWorldPointOfPen(pen, anchor));
     });
   }
@@ -1953,7 +2100,14 @@ export function facePen(pt: Point, pen?: Pen) {
   if (!pen || !pen.calculative || !pen.calculative.worldRect.center) {
     return Direction.None;
   }
-
+  if (pt.anchorId) {
+    let anchor = pen.anchors.filter((_anchor) => _anchor.id === pt.anchorId);
+    if (anchor.length) {
+      if (anchor[0].direction > -1) {
+        return anchor[0].direction;
+      }
+    }
+  }
   return facePoint(pt, pen.calculative.worldRect.center);
 }
 
@@ -2353,7 +2507,7 @@ export function setNodeAnimateProcess(pen: Pen, process: number) {
       const offsetRotate =
         ((pen.calculative.initRect.rotate + lastVal + frame[k] * process) %
           360) -
-        pen.calculative.rotate;
+        (pen.calculative.rotate || 0);
       if (pen.children?.length) {
         pen.calculative.canvas.rotatePen(
           pen,
@@ -2504,6 +2658,7 @@ export function setElemPosition(pen: Pen, elem: HTMLElement) {
   }
   const store = pen.calculative.canvas.store;
   const worldRect = pen.calculative.worldRect;
+  elem.style.opacity = pen.globalAlpha + '';
   elem.style.position = 'absolute';
   elem.style.outline = 'none';
   elem.style.left = worldRect.x + store.data.x + 'px';
@@ -2528,11 +2683,10 @@ export function setElemPosition(pen: Pen, elem: HTMLElement) {
     }
   }
   elem.style.zIndex =
-    pen.locked || store.data.locked
-      ? '999'
-      : pen.calculative.zIndex
-      ? pen.calculative.zIndex + ''
-      : '3';
+    pen.calculative.zIndex !== undefined ? pen.calculative.zIndex + '' : '4';
+  if (pen.calculative.zIndex > pen.calculative.canvas.maxZindex) {
+    pen.calculative.canvas.maxZindex = pen.calculative.zIndex;
+  }
   if (
     pen.locked === LockState.DisableEdit ||
     pen.locked === LockState.DisableMove ||
@@ -2550,6 +2704,22 @@ export function setElemPosition(pen: Pen, elem: HTMLElement) {
     elem.style.userSelect = 'none';
     elem.style.pointerEvents = 'none';
   }
+}
+
+export function setElemImg(pen: Pen, elem: HTMLElement) {
+  if (!elem) {
+    return;
+  }
+  //https://github.com/niklasvh/html2canvas
+  globalThis.html2canvas &&
+    globalThis.html2canvas(elem).then(function (canvas) {
+      // document.body.appendChild(canvas);
+      const img = new Image();
+      img.src = canvas.toDataURL('image/png', 0.1);
+      if (img.src.length > 10) {
+        pen.calculative.img = img;
+      }
+    });
 }
 
 /**
@@ -2745,7 +2915,7 @@ export function setGlobalAlpha(
   pen: Pen
 ) {
   const globalAlpha = pen.calculative.globalAlpha;
-  if (globalAlpha < 1) {
+  if (globalAlpha < 1 || (globalAlpha as any) !== '') {
     ctx.globalAlpha = globalAlpha;
   }
 }
@@ -2770,18 +2940,22 @@ export function setChildValue(pen: Pen, data: IValue) {
   for (const k in data) {
     if (inheritanceProps.includes(k)) {
       pen[k] = data[k];
-      pen.calculative[k] = data[k];
+      if (k === 'fontSize') {
+        pen.calculative[k] = data[k] * pen.calculative.canvas.store.data.scale;
+        calcTextRect(pen);
+      } else {
+        pen.calculative[k] = data[k];
+      }
     }
-
-    if (
-      pen.calculative.canvas.parent.isCombine(pen) &&
-      pen.showChild === undefined
-    ) {
-      const children = pen.children;
-      children?.forEach((childId) => {
-        const child = pen.calculative.canvas.store.pens[childId];
-        setChildValue(child, data);
-      });
-    }
+  }
+  if (
+    pen.calculative.canvas.parent.isCombine(pen) &&
+    pen.showChild === undefined
+  ) {
+    const children = pen.children;
+    children?.forEach((childId) => {
+      const child = pen.calculative.canvas.store.pens[childId];
+      child && setChildValue(child, data);
+    });
   }
 }

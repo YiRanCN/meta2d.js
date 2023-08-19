@@ -5,6 +5,8 @@ import { defaultOptions, Options } from '../options';
 
 import { Point } from '../point';
 import { globalStore } from './global';
+import { Rect } from '../rect';
+import { Event } from '../event';
 
 export interface Meta2dData {
   pens: Pen[];
@@ -24,6 +26,7 @@ export interface Meta2dData {
     customClientId?: boolean;
   };
   mqttTopics?: string;
+  websocketProtocols?: string | string[];
   background?: string;
   socketCbJs?: string;
   initJs?: string;
@@ -46,15 +49,45 @@ export interface Meta2dData {
   httpHeaders?: HeadersInit; //请求头
   version?: string; // 版本号
   id?: string;
+  _id?: string;
   https?: HttpOptions[];
   width?: number;
   height?: number;
+  networkInterval?: number;
+  networks?: Network[];
+  iconUrls?: string[];
+  mockData?: Function;
+  name?: string;
+  enableMock?: boolean;
+}
+
+export interface Network {
+  name?: string;
+  protocol: 'mqtt' | 'websocket' | 'http';
+  type?: string; //subscribe
+  url?: string;
+  //websocket
+  protocols?: string;
+  //mqtt
+  topics?: string;
+  options?: {
+    clientId?: string;
+    username?: string;
+    password?: string;
+    customClientId?: boolean;
+  };
+  //http
+  headers?: any; //请求头
+  method?: string;
+  body?: any;
 }
 
 export interface HttpOptions {
   http?: string; // http 请求 Url
   httpTimeInterval?: number; // http 请求间隔
   httpHeaders?: HeadersInit; //请求头
+  method?: string;
+  body?: BodyInit | null;
 }
 
 export enum EditType {
@@ -82,6 +115,7 @@ export interface Meta2dStore {
   path2dMap: WeakMap<Pen, Path2D>;
   animateMap: WeakMap<Pen, Pen>;
   bindDatas: { [key: string]: { id: string; formItem: FormItem }[] };
+  bind?: { [key: string]: { id: string; key: string }[] };
   active?: Pen[];
   hover?: Pen;
   lastHover?: Pen;
@@ -96,9 +130,14 @@ export interface Meta2dStore {
   clipboard?: Meta2dClipboard;
   patchFlagsBackground?: boolean; // 是否需要重绘背景，包含网格
   patchFlagsTop?: boolean; // 是否需要重绘标尺
-  bkImg: HTMLImageElement;
+  bkImg?: HTMLImageElement;
   // 测试使用
   fillWorldTextRect?: boolean; // 填充文本区域
+  cacheDatas?: {
+    data: Meta2dData;
+  }[];
+  patchFlagsLast?: boolean; // 清除上次图片画布层
+  messageEvents?: { [key: string]: { pen: Pen; event: Event }[] };
 }
 
 export interface Meta2dClipboard {
@@ -108,7 +147,7 @@ export interface Meta2dClipboard {
   scale: number;
   offset?: number;
   page: string;
-  initRect?: Point;
+  initRect?: Rect;
   pos?: Point;
 }
 
@@ -132,6 +171,9 @@ export const createStore = () => {
     options: { ...defaultOptions },
     emitter: mitt(),
     bindDatas: {},
+    bind: {},
+    cacheDatas: [],
+    messageEvents: {},
   } as Meta2dStore;
 };
 
@@ -161,6 +203,7 @@ export const clearStore = (store: Meta2dStore) => {
   store.path2dMap = new WeakMap();
   store.animateMap = new WeakMap();
   store.bindDatas = {};
+  store.bind = {};
   store.active = [];
   store.hover = undefined;
   store.lastHover = undefined;

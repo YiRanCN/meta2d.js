@@ -35,6 +35,9 @@ export function gif(pen: Pen): Path2D {
     }
     gifsList[pen.id] = img; // 提前赋值，避免重复创建
     img.onload = () => {
+      if (gifsList[pen.id] !== img) {
+        return;
+      }
       pen.calculative.img = img;
       pen.calculative.imgNaturalWidth = img.naturalWidth || pen.iconWidth;
       pen.calculative.imgNaturalHeight = img.naturalHeight || pen.iconHeight;
@@ -51,8 +54,10 @@ export function gif(pen: Pen): Path2D {
 }
 
 function destory(pen: Pen) {
-  gifsList[pen.id].remove();
-  gifsList[pen.id] = undefined;
+  if (gifsList[pen.id]) {
+    gifsList[pen.id].remove();
+    gifsList[pen.id] = undefined;
+  }
 }
 
 function move(pen: Pen) {
@@ -95,6 +100,6 @@ function changeId(pen: Pen, oldId: string, newId: string) {
 function setImagePosition(pen: Pen, elem: HTMLImageElement) {
   // meta2d canvas 绘制图片 drawImage 保持比例，是短边填充
   elem.style.objectFit = pen.imageRatio ? 'contain' : 'fill';
-  elem.style.opacity = pen.globalAlpha + '';
+  // elem.style.opacity = pen.globalAlpha + '';
   setElemPosition(pen, elem);
 }

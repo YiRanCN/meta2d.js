@@ -135,27 +135,28 @@ export class CanvasImage {
     if (patchFlagsBackground && this.isBottom) {
       const ctx = this.otherOffsreen.getContext('2d');
       ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-      if (this.store.data.width && this.store.data.height && this.store.bkImg) {
+      const width = this.store.data.width || this.store.options.width;
+      const height = this.store.data.height || this.store.options.height;
+      const x = this.store.data.x || this.store.options.x;
+      const y = this.store.data.y || this.store.options.y;
+      if (width && height && this.store.bkImg) {
         ctx.save();
         ctx.drawImage(
           this.store.bkImg,
-          this.store.data.origin.x + this.store.data.x,
-          this.store.data.origin.y + this.store.data.y,
-          this.store.data.width * this.store.data.scale,
-          this.store.data.height * this.store.data.scale
+          this.store.data.origin.x + x,
+          this.store.data.origin.y + y,
+          width * this.store.data.scale,
+          height * this.store.data.scale
         );
         ctx.restore();
       }
       const background =
-        this.store.data.background || this.store.options.background;
+        this.store.data.background ||
+        (this.store.bkImg ? undefined : this.store.options.background);
       if (background) {
         ctx.save();
         ctx.fillStyle = background;
-        const width = this.store.data.width || this.store.options.width;
-        const height = this.store.data.height || this.store.options.height;
         if (width && height) {
-          const x = this.store.data.x || this.store.options.x;
-          const y = this.store.data.y || this.store.options.y;
           ctx.fillRect(
             this.store.data.origin.x + x,
             this.store.data.origin.y + y,
@@ -176,15 +177,21 @@ export class CanvasImage {
       ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
       this.renderRule(ctx);
     }
-
+    // 从有图片画布层切换到无图片画布
+    const patchFlagsLast = this.store.patchFlagsLast;
+    if (patchFlagsLast) {
+      const ctx = this.offscreen.getContext('2d');
+      ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
     if (patchFlags) {
       const ctx = this.offscreen.getContext('2d');
       ctx.save();
+      ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
       ctx.translate(this.store.data.x, this.store.data.y);
       for (const pen of this.store.data.pens) {
+        //pen.calculative.imageDrawed  只用于判断是否需要重绘整块画布，不用于判断改图片节点是否绘制过
         if (
           !pen.calculative.hasImage ||
-          pen.calculative.imageDrawed ||
           this.store.animates.has(pen) ||
           this.store.animates.has(getParent(pen, true))
         ) {
