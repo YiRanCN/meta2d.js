@@ -1,0 +1,27 @@
+lockfileVersion: 5.4
+
+specifiers:
+  '@types/echarts': ^4.9.15
+  highcharts: ^10.0.0
+
+dependencies:
+  '@types/echarts': 4.9.18
+
+devDependencies:
+  highcharts: 10.3.3
+
+packages:
+
+  /@types/echarts/4.9.18:
+    resolution: {integrity: sha512-Qav4M1i1qmPemMywMnDGIbvIBB/9pdrDKLI1dyMho4Yz/ldCB3ry2zGeH0UhAhgmaoPgwYrCDo8xd1UeByz+rw==}
+    dependencies:
+      '@types/zrender': 4.0.3
+    dev: false
+
+  /@types/zrender/4.0.3:
+    resolution: {integrity: sha512-EPI269lkHNsObwILJ1k1z7znLjKyePuWRy/XKK0shSGpBb9cIX307arcwJV4+2NeZj5wEjN06r4D8yFv7sI06g==}
+    dev: false
+
+  /highcharts/10.3.3:
+    resolution: {integrity: sha512-r7wgUPQI9tr3jFDn3XT36qsNwEIZYcfgz4mkKEA6E4nn5p86y+u1EZjazIG4TRkl5/gmGRtkBUiZW81g029RIw==}
+    dev: true
