@@ -1,6 +1,6 @@
 import { Pen, setElemPosition } from '../pen';
 import { Point } from '../point';
-import { deepClone } from '../utils';
+import { deepClone, getRootDomain } from '../utils';
 
 export function iframe(pen: Pen) {
   if (!pen.onDestroy) {
@@ -11,6 +11,7 @@ export function iframe(pen: Pen) {
     pen.onValue = move;
     pen.onMouseMove = mouseMove;
     pen.onBeforeValue = beforeValue;
+    pen.onRenderPenRaw = renderPenRaw;
   }
   if (!pen.calculative.singleton) {
     pen.calculative.singleton = {};
@@ -38,6 +39,9 @@ export function iframe(pen: Pen) {
     pen.calculative.iframe = pen.iframe;
     div.appendChild(iframe);
     generateAroundDiv(pen);
+    iframe.onload = () => {
+      iframe.setAttribute('document.domain', '');
+    };
   }
 
   if (pen.calculative.patchFlags) {
@@ -102,17 +106,38 @@ function beforeValue(pen: Pen, value: any) {
         //有更新值
         pen.calculative.singleton.div.children[1].style.height =
           pen.operationalRect.y * 100 + '%';
+        pen.calculative.singleton.div.children[1].style.left =
+          pen.operationalRect.x * 100 + '%';
+        pen.calculative.singleton.div.children[1].style.width =
+          pen.operationalRect.width * 100 + '%';
         pen.calculative.singleton.div.children[2].style.width =
           (1 - pen.operationalRect.x - pen.operationalRect.width) * 100 + '%';
 
         pen.calculative.singleton.div.children[3].style.height =
           (1 - pen.operationalRect.y - pen.operationalRect.height) * 100 + '%';
+        pen.calculative.singleton.div.children[3].style.left =
+          pen.operationalRect.x * 100 + '%';
+        pen.calculative.singleton.div.children[3].style.width =
+          pen.operationalRect.width * 100 + '%';
+
         pen.calculative.singleton.div.children[4].style.width =
           pen.operationalRect.x * 100 + '%';
       }
     }
   }
-
+  if (value.blur !== undefined) {
+    for (let i = 1; i < 5; i++) {
+      pen.calculative.singleton.div.children[i].style[
+        'backdrop-filter'
+      ] = `blur(${value.blur || 2}px)`;
+    }
+  }
+  if (value.blurBackground !== undefined) {
+    for (let i = 1; i < 5; i++) {
+      pen.calculative.singleton.div.children[i].style.backgroundColor =
+        value.blurBackground;
+    }
+  }
   return value;
 }
 
@@ -122,7 +147,7 @@ function mouseMove(pen: Pen, e: Point) {
   }
   if (initOperationalRect(pen.operationalRect)) {
     if (
-      pen.calculative.zIndex < 4 &&
+      pen.calculative.zIndex < 5 &&
       e.x > pen.x + pen.width * pen.operationalRect.x &&
       e.x <
         pen.x +
@@ -135,7 +160,7 @@ function mouseMove(pen: Pen, e: Point) {
       if (pen.calculative.singleton.div) {
         let children: HTMLElement[] =
           pen.calculative.singleton.div.parentNode.children;
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 6; i++) {
           children[i].style.pointerEvents = 'none';
         }
       }
@@ -171,11 +196,12 @@ function generateAroundDiv(pen: Pen) {
   }
   const top = document.createElement('div');
   top.style.position = 'absolute';
-  top.style.left = '0px';
+  top.style.left = pen.operationalRect.x * 100 + '%';
   top.style.top = '0px';
-  top.style.width = '100%';
+  top.style.width = pen.operationalRect.width * 100 + '%';
   top.style.height = pen.operationalRect.y * 100 + '%';
   top.style['backdrop-filter'] = `blur(${pen.blur || 2}px)`;
+  top.style.backgroundColor = pen.blurBackground;
   div.appendChild(top);
 
   const right = document.createElement('div');
@@ -186,18 +212,18 @@ function generateAroundDiv(pen: Pen) {
     (1 - pen.operationalRect.x - pen.operationalRect.width) * 100 + '%';
   right.style.height = '100%';
   right.style['backdrop-filter'] = `blur(${pen.blur || 2}px)`;
-
+  right.style.backgroundColor = pen.blurBackground;
   div.appendChild(right);
 
   const bottom = document.createElement('div');
   bottom.style.position = 'absolute';
-  bottom.style.left = '0px';
+  bottom.style.left = pen.operationalRect.x * 100 + '%';
   bottom.style.bottom = '0px';
-  bottom.style.width = '100%';
+  bottom.style.width = pen.operationalRect.width * 100 + '%';
   bottom.style.height =
     (1 - pen.operationalRect.y - pen.operationalRect.height) * 100 + '%';
   bottom.style['backdrop-filter'] = `blur(${pen.blur || 2}px)`;
-
+  bottom.style.backgroundColor = pen.blurBackground;
   div.appendChild(bottom);
 
   const left = document.createElement('div');
@@ -207,6 +233,7 @@ function generateAroundDiv(pen: Pen) {
   left.style.width = pen.operationalRect.x * 100 + '%';
   left.style.height = '100%';
   left.style['backdrop-filter'] = `blur(${pen.blur || 2}px)`;
+  left.style.backgroundColor = pen.blurBackground;
   div.appendChild(left);
 
   let mouseEnter = () => {
@@ -225,10 +252,55 @@ function updatePointerEvents(pen: Pen) {
   if (!pen.calculative.canvas.store.data.locked && !pen.locked) {
     return;
   }
-  if (pen.calculative.zIndex < 4) {
+  if (pen.calculative.zIndex < 5) {
     let children: any = pen.calculative.singleton.div.parentNode.children;
-    for (let i = 1; i < 5; i++) {
+    for (let i = 1; i < 6; i++) {
       children[i].style.pointerEvents = 'initial';
     }
   }
+}
+
+function renderPenRaw(pen: Pen) {
+  if (pen.calculative.singleton && pen.calculative.singleton.div) {
+    try {
+      handleSaveImg(pen);
+    } catch (e) {
+      console.warn(e);
+      pen.calculative.img = null;
+    }
+  }
+}
+
+function handleSaveImg(pen: Pen) {
+  let iframeHtml = pen.calculative.singleton.div.children[0].contentWindow;
+  const iframeBody = iframeHtml.document.getElementsByTagName('body')[0];
+  const iframeScrollY = iframeHtml.document.documentElement.scrollTop;
+  const iframeScrollX = iframeHtml.document.documentElement.scrollLeft;
+  iframeHtml.document.domain = getRootDomain();
+  globalThis.html2canvas &&
+    globalThis
+      .html2canvas(iframeBody, {
+        allowTaint: true,
+        useCORS: true,
+        width: pen.width, // TODO 截屏按照1920*1080分辨率下的预览窗口宽高
+        height: pen.height,
+        x: iframeScrollX,
+        y: iframeScrollY,
+      })
+      .then((canvas) => {
+        // 转成图片，生成图片地址
+        // imgBase64 = canvas.toDataURL('image/png');
+        const img = new Image();
+        img.crossOrigin =
+          pen.crossOrigin === 'undefined'
+            ? undefined
+            : pen.crossOrigin || 'anonymous';
+        img.src = canvas.toDataURL('image/png', 0.1);
+        if (img.src.length > 10) {
+          pen.calculative.img = img;
+        }
+      })
+      .catch((e) => {
+        console.warn(e);
+      });
 }

@@ -69,6 +69,7 @@ import pkg from '../package.json';
 import { lockedError } from './utils/error';
 import { Scroll } from './scroll';
 import { getter } from './utils/object';
+import { queryURLParams } from './utils/url';
 
 export class Meta2d {
   store: Meta2dStore;
@@ -391,6 +392,36 @@ export class Meta2d {
         }
       }
     };
+    this.events[EventAction.PostMessage] = (pen: Pen, e: Event) => {
+      if (typeof e.value !== 'string') {
+        console.warn('[meta2d] Emit value must be a string');
+        return;
+      }
+      const _pen = e.params ? this.findOne(e.params) : pen;
+      if (_pen.name !== 'iframe' || !_pen.iframe) {
+        console.warn('不是嵌入页面');
+        return;
+      }
+      let params = queryURLParams(_pen.iframe.split('?')[1]);
+      (
+        _pen.calculative.singleton.div.children[0] as HTMLIFrameElement
+      ).contentWindow.postMessage(
+        JSON.stringify({
+          name: e.value,
+          id: params.id,
+        }),
+        '*'
+      );
+      return;
+    };
+    this.events[EventAction.PostMessageToParent] = (pen: Pen, e: Event) => {
+      if (typeof e.value !== 'string') {
+        console.warn('[meta2d] Emit value must be a string');
+        return;
+      }
+      window.parent.postMessage(JSON.stringify(e.value), '*');
+      return;
+    };
   }
 
   navigatorTo(id: string) {
@@ -561,6 +592,7 @@ export class Meta2d {
     const height = this.store.data.height || this.store.options.height;
     if (width && height) {
       this.canvas.canvasImageBottom.canvas.style.backgroundImage = null;
+      this.canvas && (this.canvas.canvasTemplate.bgPatchFlags = true);
     } else {
       this.canvas.canvasImageBottom.canvas.style.backgroundImage = url
         ? `url('${url}')`
@@ -577,7 +609,8 @@ export class Meta2d {
 
   setBackgroundColor(color: string = this.store.data.background) {
     this.store.data.background = color;
-    this.store.patchFlagsBackground = true;
+    // this.store.patchFlagsBackground = true;
+    this.canvas && (this.canvas.canvasTemplate.bgPatchFlags = true);
   }
 
   setGrid({
@@ -595,7 +628,8 @@ export class Meta2d {
     this.store.data.gridColor = gridColor;
     this.store.data.gridSize = gridSize;
     this.store.data.gridRotate = gridRotate;
-    this.store.patchFlagsBackground = true;
+    // this.store.patchFlagsBackground = true;
+    this.canvas && (this.canvas.canvasTemplate.bgPatchFlags = true);
   }
 
   setRule({
@@ -611,7 +645,7 @@ export class Meta2d {
   }
 
   open(data?: Meta2dData, render: boolean = true) {
-    this.clear(false);
+    this.clear(false, data.template);
     this.canvas.autoPolylineFlag = true;
     if (data) {
       this.setBackgroundImage(data.bkImage);
@@ -638,6 +672,11 @@ export class Meta2d {
         this.canvas.initLineRect(pen);
       }
     });
+
+    if (!this.store.data.template) {
+      this.store.data.template = s8();
+    }
+
     if (!render) {
       this.canvas.opening = true;
     }
@@ -895,11 +934,11 @@ export class Meta2d {
    * 擦除画布，释放 store 上的 pens
    * @param render 是否重绘
    */
-  clear(render = true) {
+  clear(render = true, template?: string) {
     for (const pen of this.store.data.pens) {
       pen.onDestroy?.(pen);
     }
-    clearStore(this.store);
+    clearStore(this.store, template);
     this.hideInput();
     this.canvas.tooltip.hide();
     if (this.map && this.map.isShow) {
@@ -911,7 +950,10 @@ export class Meta2d {
     this.store.clipboard = undefined;
 
     // 非必要，为的是 open 时重绘 背景与网格
-    this.store.patchFlagsBackground = true;
+    // this.store.patchFlagsBackground = true;
+    if (!this.store.sameTemplate) {
+      this.canvas.canvasTemplate.bgPatchFlags = true;
+    }
     this.store.patchFlagsTop = true;
     this.setBackgroundImage(undefined);
     render && this.render();
@@ -1005,9 +1047,13 @@ export class Meta2d {
   startAnimate(idOrTagOrPens?: string | Pen[], params?: number | string): void {
     this.stopAnimate(idOrTagOrPens);
     let pens: Pen[];
+    // 没有参数 则播放有自动播放属性的动画
     if (!idOrTagOrPens) {
       pens = this.store.data.pens.filter((pen) => {
-        return (pen.type || pen.frames) && pen.autoPlay;
+        return (
+          ((pen.type || pen.frames) && pen.autoPlay) ||
+          (pen.animations && pen.autoPlay)
+        );
       });
     } else if (typeof idOrTagOrPens === 'string') {
       pens = this.find(idOrTagOrPens);
@@ -1021,8 +1067,8 @@ export class Meta2d {
         pen.calculative.frameStart += d;
         pen.calculative.frameEnd += d;
       } else {
+        let index = -1;
         if (params !== undefined && pen.animations) {
-          let index = -1;
           if (typeof params === 'string') {
             index = pen.animations.findIndex(
               (animation) => animation.name === params
@@ -1037,6 +1083,10 @@ export class Meta2d {
               return;
             }
           }
+        } else if (params === undefined) {
+          index = pen.animations?.findIndex((i) => i.autoPlay) || -1;
+        }
+        if (index !== -1) {
           const animate = deepClone(pen.animations[index]);
           delete animate.name;
           animate.currentAnimation = index;
@@ -1111,7 +1161,7 @@ export class Meta2d {
     });
     this.initImageCanvas(pens);
     setTimeout(() => {
-      this.canvas.calcActiveRect();
+      this.canvas?.calcActiveRect();
       this.render();
     }, 20);
   }
@@ -1797,13 +1847,6 @@ export class Meta2d {
 
   //获取动态参数
   getDynamicParam(key: string) {
-    function queryURLParams() {
-      let url = window.location.href.split('?')[1];
-      const urlSearchParams = new URLSearchParams(url);
-      const params = Object.fromEntries(urlSearchParams.entries());
-      return params;
-    }
-
     function getCookie(name: string) {
       let arr: RegExpMatchArray | null;
       const reg = new RegExp('(^| )' + name + '=([^;]*)(;|$)');
@@ -2474,7 +2517,7 @@ export class Meta2d {
    */
   downloadPng(name?: string, padding?: Padding) {
     for (const pen of this.store.data.pens) {
-      if (pen.calculative.img) {
+      if (pen.calculative.img || ['iframe'].includes(pen.name)) {
         //重新生成绘制图片
         pen.onRenderPenRaw?.(pen);
       }
@@ -2489,7 +2532,7 @@ export class Meta2d {
       const evt = document.createEvent('MouseEvents');
       evt.initEvent('click', true, true);
       a.dispatchEvent(evt);
-    });
+    }, 1000);
   }
 
   downloadSvg() {
@@ -2543,6 +2586,23 @@ export class Meta2d {
     return getRect(pens);
   }
 
+  hiddenTemplate() {
+    this.canvas.canvasTemplate.hidden();
+  }
+
+  showTemplate() {
+    this.canvas.canvasTemplate.show();
+  }
+
+  lockTemplate(lock: LockState) {
+    //锁定
+    this.store.data.pens.forEach((pen) => {
+      if (pen.template) {
+        pen.locked = lock;
+      }
+    });
+  }
+
   /**
    * 放大到屏幕尺寸，并居中
    * @param fit true，填满但完整展示；false，填满，但长边可能截取（即显示不完整）
@@ -2574,6 +2634,58 @@ export class Meta2d {
     this.scale(ratio * this.store.data.scale);
 
     // 5. 居中
+    this.centerView();
+  }
+
+  trimPens() {
+    //去除空连线
+    let pens = this.store.data.pens.filter(
+      (pen) => pen.name === 'line' && pen.anchors.length < 2
+    );
+    this.delete(pens);
+  }
+
+  /**
+   * 放大到屏幕尺寸，并居中
+   * @param fit true，填满但完整展示；false，填满，但长边可能截取（即显示不完整）
+   */
+  fitTemplateView(fit: boolean = true, viewPadding: Padding = 10) {
+    //  默认垂直填充，两边留白
+    if (!this.hasView()) return;
+    // 1. 重置画布尺寸为容器尺寸
+    const { canvas } = this.canvas;
+    const { offsetWidth: width, offsetHeight: height } = canvas;
+    // 2. 获取设置的留白值
+    const padding = formatPadding(viewPadding);
+
+    // 3. 获取图形尺寸
+    const rect = this.getRect();
+
+    // 4. 计算缩放比例
+    const w = (width - padding[1] - padding[3]) / rect.width;
+    const h = (height - padding[0] - padding[2]) / rect.height;
+    let ratio = w;
+    if (fit) {
+      // 完整显示取小的
+      ratio = w > h ? h : w;
+    } else {
+      ratio = w > h ? w : h;
+    }
+
+    // 该方法直接更改画布的 scale 属性，所以比率应该乘以当前 scale
+    this.canvas.templateScale(ratio * this.store.data.scale);
+    let _rect = this.getRect();
+
+    let pens = this.store.data.pens.filter((pen) => !pen.parentId);
+    this.canvas.templateTranslatePens(pens, -_rect.x, -_rect.y);
+    // 5. 居中
+    this.store.data.pens.forEach((pen) => {
+      if (!pen.type) {
+        this.canvas.updateLines(pen);
+      } else {
+        this.canvas.initLineRect(pen);
+      }
+    });
     this.centerView();
   }
 
@@ -2899,6 +3011,27 @@ export class Meta2d {
       this.alignPen(align, item, rect);
     }
     this.render();
+    this.pushHistory({
+      type: EditType.Update,
+      initPens,
+      pens,
+    });
+  }
+
+  //对齐大屏
+  alignNodesV(align: string, pens: Pen[] = this.store.data.pens) {
+    const width = this.store.data.width || this.store.options.width;
+    const height = this.store.data.height || this.store.options.height;
+    let rect = {
+      x: 0,
+      y: 0,
+      width,
+      height,
+    };
+    const initPens = deepClone(pens); // 原 pens ，深拷贝一下
+    for (const item of pens) {
+      this.alignPen(align, item, rect);
+    }
     this.pushHistory({
       type: EditType.Update,
       initPens,
@@ -3305,7 +3438,7 @@ export class Meta2d {
         zIndex = pen.calculative.canvas.maxZindex;
       } else if (type === 'up') {
         zIndex =
-          pen.calculative.zIndex === undefined ? 5 : pen.calculative.zIndex + 1;
+          pen.calculative.zIndex === undefined ? 6 : pen.calculative.zIndex + 1;
       } else if (type === 'down') {
         zIndex =
           pen.calculative.zIndex === undefined ? 3 : pen.calculative.zIndex - 1;
@@ -3445,6 +3578,10 @@ export class Meta2d {
       const line = this.store.pens[lineId];
       if (!line) {
         console.warn(node, 'node contain a error connectedLine');
+        return;
+      }
+      if (lines.find((_line) => _line.id === line.id)) {
+        //去重
         return;
       }
       switch (type) {

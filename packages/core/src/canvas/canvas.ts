@@ -128,6 +128,7 @@ import { Meta2d } from '../core';
 import { Dialog } from '../dialog';
 import { setter } from '../utils/object';
 import { Title } from '../title';
+import { CanvasTemplate } from './canvasTemplate';
 
 export const movingSuffix = '-moving' as const;
 export class Canvas {
@@ -199,7 +200,7 @@ export class Canvas {
   pointSize = 8 as const;
   pasteOffset: boolean = true;
   opening: boolean = false;
-  maxZindex: number = 4;
+  maxZindex: number = 5;
   canMoveLine: boolean = false; //moveConnectedLine=false
   /**
    * @deprecated 改用 beforeAddPens
@@ -236,6 +237,7 @@ export class Canvas {
   scroll: Scroll;
   movingAnchor: Point; // 正在移动中的瞄点
 
+  canvasTemplate: CanvasTemplate;
   canvasImage: CanvasImage;
   canvasImageBottom: CanvasImage;
   magnifierCanvas: MagnifierCanvas;
@@ -251,27 +253,29 @@ export class Canvas {
     public parentElement: HTMLElement,
     public store: Meta2dStore
   ) {
+    this.canvasTemplate = new CanvasTemplate(parentElement, store);
+    this.canvasTemplate.canvas.style.zIndex = '1';
     this.canvasImageBottom = new CanvasImage(parentElement, store, true);
-    this.canvasImageBottom.canvas.style.zIndex = '1';
+    this.canvasImageBottom.canvas.style.zIndex = '2';
 
     parentElement.appendChild(this.canvas);
     this.canvas.style.position = 'absolute';
     this.canvas.style.backgroundRepeat = 'no-repeat';
     this.canvas.style.backgroundSize = '100% 100%';
-    this.canvas.style.zIndex = '2';
+    this.canvas.style.zIndex = '3';
 
     this.canvasImage = new CanvasImage(parentElement, store);
-    this.canvasImage.canvas.style.zIndex = '3';
+    this.canvasImage.canvas.style.zIndex = '4';
 
     this.magnifierCanvas = new MagnifierCanvas(this, parentElement, store);
-    this.magnifierCanvas.canvas.style.zIndex = '4';
+    this.magnifierCanvas.canvas.style.zIndex = '5';
 
     this.externalElements.style.position = 'absolute';
     this.externalElements.style.left = '0';
     this.externalElements.style.top = '0';
     this.externalElements.style.outline = 'none';
     this.externalElements.style.background = 'transparent';
-    this.externalElements.style.zIndex = '4';
+    this.externalElements.style.zIndex = '5';
     parentElement.style.position = 'relative';
     parentElement.appendChild(this.externalElements);
     this.createInput();
@@ -680,6 +684,7 @@ export class Canvas {
         if (e.ctrlKey || e.metaKey) {
           x = -10;
         }
+        x = x * this.store.data.scale;
         this.translatePens(this.store.active, x, 0);
         break;
       case 'ArrowUp':
@@ -694,6 +699,7 @@ export class Canvas {
         if (e.ctrlKey || e.metaKey) {
           y = -10;
         }
+        y = y * this.store.data.scale;
         this.translatePens(this.store.active, 0, y);
         break;
       case 'ArrowRight':
@@ -708,6 +714,7 @@ export class Canvas {
         if (e.ctrlKey || e.metaKey) {
           x = 10;
         }
+        x = x * this.store.data.scale;
         this.translatePens(this.store.active, x, 0);
         break;
       case 'ArrowDown':
@@ -722,6 +729,7 @@ export class Canvas {
         if (e.ctrlKey || e.metaKey) {
           y = 10;
         }
+        y = y * this.store.data.scale;
         this.translatePens(this.store.active, 0, y);
         break;
       case 'd':
@@ -2359,6 +2367,7 @@ export class Canvas {
     // active 消息表示拖拽结束
     // this.store.emitter.emit('active', this.store.active);
     this.initImageCanvas(this.store.active);
+    this.initTemplateCanvas(this.store.active);
     // 避免选中图元的出错情况，this.dock为undefined
     if (!this.dock) return;
     const { xDock, yDock } = this.dock;
@@ -2456,6 +2465,11 @@ export class Canvas {
     pens.some((pen) => this.hasImage(pen, false)) && this.canvasImage.init();
     pens.some((pen) => this.hasImage(pen, true)) &&
       this.canvasImageBottom.init();
+  }
+
+  initTemplateCanvas(pens: Pen[]) {
+    pens.some((pen) => pen.template !== undefined) &&
+      this.canvasTemplate.init();
   }
 
   private hasImage(pen: Pen, isBottom: boolean): boolean {
@@ -2629,6 +2643,7 @@ export class Canvas {
     let hoverType = HoverType.None;
     this.store.hover = undefined;
     this.store.hoverAnchor = undefined;
+    this.title.hide();
     this.store.pointAt = undefined;
     this.store.pointAtIndex = undefined;
     const activeLine =
@@ -2750,32 +2765,36 @@ export class Canvas {
         continue;
       }
       //anchor title
-      if (this.store.data.locked) {
-        // locked>0
-        if (pen.calculative.worldAnchors) {
-          for (const anchor of pen.calculative.worldAnchors) {
-            if (
-              hitPoint(
-                pt,
-                anchor,
-                this.pointSize,
-                anchor.penId ? this.store.pens[anchor.penId] : undefined
-              )
-            ) {
-              this.title.show(anchor, pen);
-              if (anchor.title) {
-                break outer;
-              }
-            }
-          }
-        }
-      }
+      // if (this.store.data.locked) {
+      //   // locked>0
+      //   if (pen.calculative.worldAnchors) {
+      //     for (const anchor of pen.calculative.worldAnchors) {
+      //       if (
+      //         hitPoint(
+      //           pt,
+      //           anchor,
+      //           this.pointSize,
+      //           anchor.penId ? this.store.pens[anchor.penId] : undefined
+      //         )
+      //       ) {
+      //         this.title.show(anchor, pen);
+      //         if (anchor.title) {
+      //           break outer;
+      //         }
+      //       }
+      //     }
+      //   }
+      // }
       // 锚点
       if (!this.store.data.locked && this.hotkeyType !== HotkeyType.Resize) {
         if (pen.calculative.worldAnchors) {
           for (const anchor of pen.calculative.worldAnchors) {
             hoverType = this.inAnchor(pt, pen, anchor);
             if (hoverType) {
+              //title显示
+              let _anchor = deepClone(anchor);
+              Object.assign(_anchor, pt);
+              this.title.show(_anchor, pen);
               break outer;
             }
           }
@@ -2929,8 +2948,11 @@ export class Canvas {
             ) {
               continue;
             }
-
+            this.title.hide();
             if (this.inAnchor(pt, pen, anchor)) {
+              let _anchor = deepClone(anchor);
+              Object.assign(_anchor, pt);
+              this.title.show(_anchor, pen);
               return true;
             }
           }
@@ -3082,6 +3104,7 @@ export class Canvas {
     this.externalElements.style.width = w + 'px';
     this.externalElements.style.height = h + 'px';
 
+    this.canvasTemplate.resize(w, h);
     this.canvasImage.resize(w, h);
     this.canvasImageBottom.resize(w, h);
     this.magnifierCanvas.resize(w, h);
@@ -3121,6 +3144,9 @@ export class Canvas {
     this.offscreen
       .getContext('2d')
       .clearRect(0, 0, this.offscreen.width, this.offscreen.height);
+    if (!this.store.data.template) {
+      this.canvasTemplate.clear();
+    }
     this.canvasImage.clear();
     this.canvasImageBottom.clear();
   }
@@ -3335,9 +3361,12 @@ export class Canvas {
         break;
     }
     if (action.type === EditType.Update) {
-      this.initImageCanvas([...action.pens, ...action.initPens]);
+      let pens = [...action.pens, ...action.initPens];
+      this.initImageCanvas(pens);
+      this.initTemplateCanvas(pens);
     } else {
       this.initImageCanvas(action.pens);
+      this.initTemplateCanvas(action.pens);
     }
     this.parent.onSizeUpdate();
     this.render();
@@ -3348,6 +3377,17 @@ export class Canvas {
   makePen(pen: Pen) {
     if (!pen.id) {
       pen.id = s8();
+    }
+    if (
+      Math.abs(this.store.lastScale - this.store.data.scale) < 0.0001 &&
+      this.store.sameTemplate &&
+      this.store.templatePens[pen.id] &&
+      pen.template
+    ) {
+      pen = this.store.templatePens[pen.id];
+      this.store.data.pens.push(pen);
+      this.updatePenRect(pen);
+      return;
     }
     this.store.data.pens.push(pen);
     this.store.pens[pen.id] = pen;
@@ -3622,6 +3662,9 @@ export class Canvas {
         pen.calculative.imgNaturalHeight = img.naturalHeight || pen.iconHeight;
         globalStore.htmlElements[pen.image] = img;
         this.imageLoaded();
+        if (pen.template) {
+          this.templateImageLoaded();
+        }
       };
     };
     // send the request
@@ -3639,6 +3682,9 @@ export class Canvas {
           pen.calculative.imgNaturalHeight =
             img.naturalHeight || pen.iconHeight;
           this.imageLoaded(); // TODO: 重绘图片层 有延时器，可能卡顿
+          if (pen.template) {
+            this.templateImageLoaded();
+          }
         } else {
           if (
             navigator.userAgent.includes('Firefox') &&
@@ -3672,6 +3718,9 @@ export class Canvas {
                 img.naturalHeight || pen.iconHeight;
               globalStore.htmlElements[pen.image] = img;
               this.imageLoaded();
+              if (pen.template) {
+                this.templateImageLoaded();
+              }
             };
           }
         }
@@ -3703,6 +3752,9 @@ export class Canvas {
             pen.calculative.backgroundImg = img;
             globalStore.htmlElements[pen.backgroundImage] = img;
             this.imageLoaded();
+            if (pen.template) {
+              this.templateImageLoaded();
+            }
           };
         }
       }
@@ -3733,6 +3785,9 @@ export class Canvas {
             pen.calculative.strokeImg = img;
             globalStore.htmlElements[pen.strokeImage] = img;
             this.imageLoaded();
+            if (pen.template && pen.name !== 'gif') {
+              this.templateImageLoaded();
+            }
           };
         }
       }
@@ -3747,6 +3802,17 @@ export class Canvas {
       // 加载完图片，重新渲染一次图片层
       this.canvasImage.init();
       this.canvasImageBottom.init();
+      this.render();
+    }, 100);
+  }
+
+  private templateImageTimer: any;
+  // 避免初始化图片加载重复调用 render，此处防抖
+  templateImageLoaded() {
+    this.templateImageTimer && clearTimeout(this.templateImageTimer);
+    this.templateImageTimer = setTimeout(() => {
+      // 加载完图片，重新渲染一次图片层
+      this.canvasTemplate.init();
       this.render();
     }, 100);
   }
@@ -3886,6 +3952,7 @@ export class Canvas {
     const ctx = this.canvas.getContext('2d');
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.drawImage(this.offscreen, 0, 0, this.width, this.height);
+    this.canvasTemplate.render();
     this.canvasImageBottom.render();
     this.canvasImage.render();
     this.patchFlags = false;
@@ -3899,7 +3966,9 @@ export class Canvas {
       if (!isFinite(pen.x)) {
         continue;
       }
-
+      if (pen.template) {
+        continue;
+      }
       if (pen.calculative.inView) {
         renderPen(ctx, pen);
       }
@@ -3944,14 +4013,18 @@ export class Canvas {
         }
         ctx.strokeStyle = this.store.options.activeColor;
 
-        ctx.globalAlpha = 0.3;
+        ctx.globalAlpha = this.store.options.activeGlobalAlpha || 0.3;
         ctx.beginPath();
+        ctx.lineWidth = this.store.options.activeLineWidth || 1;
+        ctx.setLineDash(this.store.options.activeLineDash || []);
         ctx.strokeRect(
           this.activeRect.x,
           this.activeRect.y,
           this.activeRect.width,
           this.activeRect.height
         );
+        ctx.setLineDash([]);
+        ctx.lineWidth = 1;
 
         ctx.globalAlpha = 1;
         if (
@@ -4043,7 +4116,7 @@ export class Canvas {
           }
           if (anchor.type === PointType.Line) {
             //旋转的情况
-            let _rotate = this.store.pens[anchor.penId].rotate;
+            let _rotate = this.store.pens[anchor.penId].rotate || 0;
             if (this.store.pens[anchor.penId].calculative.flipX) {
               _rotate *= -1;
             }
@@ -4198,6 +4271,7 @@ export class Canvas {
     this.store.data.x = Math.round(this.store.data.x);
     this.store.data.y = Math.round(this.store.data.y);
     setTimeout(() => {
+      this.canvasTemplate.init();
       this.canvasImage.init();
       this.canvasImageBottom.init();
       this.render();
@@ -4241,7 +4315,8 @@ export class Canvas {
    * @param center 中心点，引用类型，存在副作用，会更改原值
    */
   scale(scale: number, center = { x: 0, y: 0 }) {
-    const { minScale, maxScale } = this.store.options;
+    const minScale = this.store.data.minScale || this.store.options.minScale;
+    const maxScale = this.store.data.maxScale || this.store.options.maxScale;
     if (!(scale >= minScale && scale <= maxScale)) {
       return;
     }
@@ -4279,6 +4354,7 @@ export class Canvas {
     });
     this.calcActiveRect();
     setTimeout(() => {
+      this.canvasTemplate.init();
       this.canvasImage.init();
       this.canvasImageBottom.init();
       const map = this.parent.map;
@@ -4288,6 +4364,40 @@ export class Canvas {
       this.render();
       this.store.emitter.emit('scale', this.store.data.scale);
     });
+  }
+
+  templateScale(scale: number, center = { x: 0, y: 0 }) {
+    const { minScale, maxScale } = this.store.options;
+    if (!(scale >= minScale && scale <= maxScale)) {
+      return;
+    }
+    const s = scale / this.store.data.scale;
+    this.store.data.scale = scale;
+    this.store.data.center = { x: 0, y: 0 };
+    this.store.data.origin = { x: 0, y: 0 };
+    this.store.data.pens.forEach((pen) => {
+      if (pen.parentId) {
+        return;
+      }
+      scalePen(pen, s, center);
+      pen.onScale && pen.onScale(pen);
+      if (pen.isRuleLine) {
+        // 扩大线的比例，若是放大，即不缩小，若是缩小，会放大
+        const lineScale = s > 1 ? 1 : 1 / s / s;
+        // 中心点即为线的中心
+        const lineCenter = pen.calculative.worldRect.center;
+        if (!pen.width) {
+          // 垂直线
+          scalePen(pen, lineScale, lineCenter);
+        } else if (!pen.height) {
+          // 水平线
+          scalePen(pen, lineScale, lineCenter);
+        }
+      }
+      // this.updatePenRect(pen, { worldRectIsReady: true });
+      this.execPenResize(pen);
+    });
+    this.calcActiveRect();
   }
 
   rotatePens(e: Point) {
@@ -4317,6 +4427,7 @@ export class Canvas {
     this.lastRotate = this.activeRect.rotate;
     this.getSizeCPs();
     this.initImageCanvas(this.store.active);
+    this.initTemplateCanvas(this.store.active);
     this.render();
     this.store.emitter.emit('rotatePens', this.store.active);
 
@@ -4415,6 +4526,7 @@ export class Canvas {
     });
     this.getSizeCPs();
     this.initImageCanvas(this.store.active);
+    this.initTemplateCanvas(this.store.active);
     this.render();
     this.store.emitter.emit('resizePens', this.store.active);
 
@@ -4928,8 +5040,6 @@ export class Canvas {
     y: number,
     doing?: boolean
   ) {
-    x = x * this.store.data.scale;
-    y = y * this.store.data.scale;
     if (!pens || !pens.length) {
       return;
     }
@@ -4991,9 +5101,48 @@ export class Canvas {
         initPens,
       });
       this.initImageCanvas(pens);
+      this.initTemplateCanvas(pens);
       this.store.emitter.emit('translatePens', pens);
     }
     this.store.emitter.emit('translatingPens', pens);
+  }
+
+  /**
+   * 移动 画笔们
+   * @param pens 画笔们，不包含子节点
+   * @param x 偏移 x
+   * @param y 偏移 y
+   * @param doing 是否持续移动
+   */
+  templateTranslatePens(pens = this.store.active, x: number, y: number) {
+    if (!pens || !pens.length) {
+      return;
+    }
+    const containChildPens = this.getAllByPens(pens);
+    pens.forEach((pen) => {
+      if (pen.type === PenType.Line) {
+        if (!this.store.options.moveConnectedLine && !this.canMoveLine) {
+          return;
+        }
+        translateLine(pen, x, y);
+        this.checkDisconnect(pen, containChildPens);
+        this.store.path2dMap.set(pen, globalStore.path2dDraws[pen.name](pen));
+      } else {
+        translateRect(pen.calculative.worldRect, x, y);
+        this.updatePenRect(pen, { worldRectIsReady: true });
+        pen.calculative.x = pen.x;
+        pen.calculative.y = pen.y;
+        if (pen.calculative.initRect) {
+          pen.calculative.initRect.x = pen.calculative.x;
+          pen.calculative.initRect.y = pen.calculative.y;
+          pen.calculative.initRect.ex =
+            pen.calculative.x + pen.calculative.width;
+          pen.calculative.initRect.ey =
+            pen.calculative.y + pen.calculative.height;
+        }
+      }
+      pen.onMove?.(pen);
+    });
   }
 
   private calcAutoAnchor(
@@ -5691,6 +5840,7 @@ export class Canvas {
     const deletePens: Pen[] = [];
     this._del(pens, deletePens);
     this.initImageCanvas(deletePens);
+    this.initTemplateCanvas(deletePens);
     this.inactive();
     this.clearHover();
     this.render();
@@ -5922,6 +6072,7 @@ export class Canvas {
     this.inputDiv.scrollTop = this.inputDiv.scrollHeight;
     this.inputDiv.scrollLeft = this.inputDiv.scrollWidth;
     pen.calculative.text = undefined;
+    this.initTemplateCanvas([pen]);
     this.render();
   };
 
@@ -6138,6 +6289,7 @@ export class Canvas {
         });
         this.store.emitter.emit('valueUpdate', pen);
       }
+      this.initTemplateCanvas([pen]);
     }
     this.inputDiv.dataset.penId = undefined;
     this.dropdown.style.display = 'none';
@@ -6519,6 +6671,9 @@ export class Canvas {
     } else {
       this.initImageCanvas([pen]);
     }
+    if (data.template !== undefined || pen.template) {
+      this.initTemplateCanvas([pen]);
+    }
   }
 
   /**
@@ -6849,6 +7004,7 @@ export class Canvas {
     this.store.data.x = this.canvas.clientWidth / 2 - x * rect.width - rect.x;
     this.store.data.y = this.canvas.clientHeight / 2 - y * rect.height - rect.y;
     this.onMovePens();
+    this.canvasTemplate.init();
     this.canvasImage.init();
     this.canvasImageBottom.init();
     this.render();

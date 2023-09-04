@@ -280,6 +280,7 @@ function rgbaToHex(value) {
         color = color.replace(')', '');
         let colorA = parseInt(color * 255 + '');
         let colorAHex = colorA.toString(16);
+        colorAHex = colorAHex.length === 2? colorAHex : '0' + colorAHex;
         value += colorAHex;
       }
     }
@@ -913,12 +914,86 @@ function drawText(ctx: CanvasRenderingContext2D, pen: Pen) {
     } else if (textAlign === 'right') {
       x = width - textLineWidth;
     }
+    // 下划线
     ctx.fillText(text, drawRectX + x, drawRectY + (i + y) * oneRowHeight);
+    const { textDecorationColor, textDecorationDash, textDecoration } = pen;
+    if (textDecoration) {
+      drawUnderLine(
+        ctx,
+        {
+          x: drawRectX + x,
+          y: drawRectY + (i + y) * oneRowHeight,
+          width: textLineWidth,
+        },
+        { textDecorationColor, textDecorationDash, fontSize }
+      );
+    }
+    // 删除线
+    const { textStrickoutColor, textStrickoutDash, textStrickout } = pen;
+    if (textStrickout) {
+      drawStrickout(
+        ctx,
+        {
+          x: drawRectX + x,
+          y: drawRectY + (i + y) * oneRowHeight,
+          width: textLineWidth,
+        },
+        { textStrickoutColor, textStrickoutDash, fontSize }
+      );
+    }
   });
-
   ctx.restore();
 }
-
+function drawUnderLine(
+  ctx: CanvasRenderingContext2D,
+  location: any,
+  config: any
+) {
+  const { textDecorationColor, textDecorationDash, fontSize } = config;
+  let { x, y, width } = location;
+  switch (ctx.textBaseline) {
+    case 'top':
+      y += fontSize;
+      break;
+    case 'middle':
+      y += fontSize / 2;
+      break;
+  }
+  ctx.save();
+  ctx.beginPath();
+  ctx.strokeStyle = textDecorationColor ? textDecorationColor : ctx.fillStyle;
+  ctx.lineWidth = 1;
+  ctx.moveTo(x, y);
+  ctx.setLineDash(textDecorationDash || []);
+  ctx.lineTo(x + width, y);
+  ctx.stroke();
+  ctx.restore();
+}
+function drawStrickout(
+  ctx: CanvasRenderingContext2D,
+  location: any,
+  config: any
+) {
+  const { textStrickoutColor, textStrickoutDash, fontSize } = config;
+  let { x, y, width } = location;
+  switch (ctx.textBaseline) {
+    case 'top':
+      y += fontSize / 2;
+      break;
+    case 'bottom':
+      y -= fontSize / 2;
+      break;
+  }
+  ctx.save();
+  ctx.beginPath();
+  ctx.strokeStyle = textStrickoutColor ? textStrickoutColor : ctx.fillStyle;
+  ctx.lineWidth = 1;
+  ctx.moveTo(x, y);
+  ctx.setLineDash(textStrickoutDash || []);
+  ctx.lineTo(x + width, y);
+  ctx.stroke();
+  ctx.restore();
+}
 function drawFillText(ctx: CanvasRenderingContext2D, pen: Pen, text: string) {
   if (text == undefined) {
     return;
@@ -1286,7 +1361,6 @@ export function renderPen(ctx: CanvasRenderingContext2D, pen: Pen) {
   }
 
   drawText(ctx, pen);
-
   if (pen.type === PenType.Line && pen.fillTexts) {
     for (const text of pen.fillTexts) {
       drawFillText(ctx, pen, text);
@@ -1865,12 +1939,13 @@ export function calcPadding(pen: Pen, rect: Rect) {
   !pen.paddingLeft && (pen.calculative.paddingLeft = 0);
   !pen.paddingRight && (pen.calculative.paddingRight = 0);
 
-  pen.calculative.paddingTop < 1 && (pen.calculative.paddingTop *= rect.height);
-  pen.calculative.paddingBottom < 1 &&
+  Math.abs(pen.calculative.paddingTop) < 1 &&
+    (pen.calculative.paddingTop *= rect.height);
+  Math.abs(pen.calculative.paddingBottom) < 1 &&
     (pen.calculative.paddingBottom *= rect.height);
-  pen.calculative.paddingLeft < 1 &&
+  Math.abs(pen.calculative.paddingLeft) < 1 &&
     (pen.calculative.paddingLeft *= rect.width);
-  pen.calculative.paddingRight < 1 &&
+  Math.abs(pen.calculative.paddingRight) < 1 &&
     (pen.calculative.paddingRight *= rect.width);
 }
 
@@ -2683,7 +2758,7 @@ export function setElemPosition(pen: Pen, elem: HTMLElement) {
     }
   }
   elem.style.zIndex =
-    pen.calculative.zIndex !== undefined ? pen.calculative.zIndex + '' : '4';
+    pen.calculative.zIndex !== undefined ? pen.calculative.zIndex + '' : '5';
   if (pen.calculative.zIndex > pen.calculative.canvas.maxZindex) {
     pen.calculative.canvas.maxZindex = pen.calculative.zIndex;
   }
