@@ -20,8 +20,11 @@ $RECYCLE.BIN/
 # App specific
 
 node_modules/
-dist/
+# dist/
 .idea/
 .vscode/
 vendor
+
+.history*
+dist/*
 
